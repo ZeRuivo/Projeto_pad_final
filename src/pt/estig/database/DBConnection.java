@@ -17,13 +17,11 @@ public class DBConnection {
     }
 
     public boolean connect() {
-        // Altera para a tua senha do MySQL se necessário
         String user = "root";
         String password = "";
         String url = "jdbc:mysql://localhost:3306/" + this.dbName;
 
         try {
-            // Carrega o Driver (O tal que causou o erro ClassNotFoundException)
             Class.forName("com.mysql.cj.jdbc.Driver");
             this.connection = DriverManager.getConnection(url, user, password);
             return true;

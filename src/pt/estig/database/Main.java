@@ -25,9 +25,11 @@ public class Main {
             System.out.println("2. Listar Exercícios");
             System.out.println("3. Ver Relatório de Treinos");
             System.out.println("4. Adicionar Novo Utilizador");
-            System.out.println("5. Editar Utilizador");          // Funcionalidade Adicionada
-            System.out.println("6. Eliminar Utilizador");        // Funcionalidade Adicionada
-            System.out.println("7. Pesquisar Utilizador por Nome"); // Funcionalidade Adicionada
+            System.out.println("5. Editar Utilizador");
+            System.out.println("6. Eliminar Utilizador");
+            System.out.println("7. Pesquisar Utilizador por Nome");
+            System.out.println("8. Criar Novo Treino");
+            System.out.println("9. Adicionar Exercício ao Treino");
             System.out.println("0. Sair");
             System.out.print(  "   Escolha uma opção: ");
 
@@ -44,6 +46,8 @@ public class Main {
                 case 5: editarUtilizadores(scanner); break;
                 case 6: eliminarUtilizador(scanner); break;
                 case 7: pesquisarUtilizador(scanner); break;
+                case 8: criarTreino(scanner); break;
+                case 9: adicionarItemTreino(scanner); break;
                 case 0: System.out.println("A sair..."); break;
                 default: System.out.println("Opção inválida!");
             }
@@ -148,15 +152,30 @@ public class Main {
     public static void relatorioTreinos() {
         db = new DBConnection(dbName);
         if (db.connect()) {
-            // JOIN combina a tabela treinos e utilizadores para mostrar o NOME em vez do ID numérico
-            String sql = "SELECT u.nome, t.descricao, t.data_treino FROM treinos t " +
-                    "JOIN utilizadores u ON t.id_utilizador = u.id_utilizador";
+            // Query avançada: Junta Utilizadores -> Treinos -> Itens -> Exercicios
+            String sql = "SELECT u.nome AS atleta, t.descricao, e.nome AS exercicio, i.series, i.repeticoes, i.carga_kg " +
+                    "FROM itens_treino i " +
+                    "JOIN treinos t ON i.id_treino = t.id_treino " +
+                    "JOIN utilizadores u ON t.id_utilizador = u.id_utilizador " +
+                    "JOIN exercicios e ON i.id_exercicio = e.id_exercicio " +
+                    "ORDER BY t.data_treino DESC";
+
             try (PreparedStatement ps = db.getConnection().prepareStatement(sql)) {
                 ResultSet rs = ps.executeQuery();
-                System.out.println("\n--- HISTÓRICO DE TREINOS ---");
+                System.out.println("\n--- RELATÓRIO DETALHADO DE TREINOS ---");
+                // Formatação de tabela para ficar bonito no relatório
+                System.out.printf("%-20s | %-20s | %-15s | %s | %s | %s\n",
+                        "Atleta", "Treino", "Exercicio", "Sér.", "Reps", "Carga");
+                System.out.println("--------------------------------------------------------------------------------------");
+
                 while (rs.next()) {
-                    System.out.printf("Atleta: %s | Treino: %s | Data: %s\n",
-                            rs.getString("nome"), rs.getString("descricao"), rs.getTimestamp("data_treino"));
+                    System.out.printf("%-20s | %-20s | %-15s | %-4d | %-4d | %-5.1f kg\n",
+                            rs.getString("atleta"),
+                            rs.getString("descricao"),
+                            rs.getString("exercicio"),
+                            rs.getInt("series"),
+                            rs.getInt("repeticoes"),
+                            rs.getDouble("carga_kg"));
                 }
             } catch (SQLException e) { e.printStackTrace(); }
             db.close();
@@ -197,6 +216,81 @@ public class Main {
                             rs.getString("nome"), rs.getString("grupo_muscular"));
                 }
             } catch (SQLException e) { e.printStackTrace(); }
+            db.close();
+        }
+    }
+    public static void criarTreino(Scanner scanner) {
+        // 1. Mostrar utilizadores para saber o ID
+        listarUtilizadores();
+
+        System.out.println("\n--- CRIAR NOVO TREINO ---");
+        System.out.print("ID do Utilizador (Atleta): ");
+        int idUtilizador = scanner.nextInt();
+        scanner.nextLine(); // Limpar buffer
+
+        System.out.print("Descrição do Treino (ex: Costas e Biceps): ");
+        String descricao = scanner.nextLine();
+
+        db = new DBConnection(dbName);
+        if (db.connect()) {
+            String sql = "INSERT INTO treinos (id_utilizador, descricao) VALUES (?, ?)";
+            try (PreparedStatement ps = db.getConnection().prepareStatement(sql, PreparedStatement.RETURN_GENERATED_KEYS)) {
+                ps.setInt(1, idUtilizador);
+                ps.setString(2, descricao);
+
+                int rows = ps.executeUpdate();
+                if (rows > 0) {
+                    // Recuperar o ID do treino gerado para mostrar ao utilizador
+                    ResultSet generatedKeys = ps.getGeneratedKeys();
+                    if (generatedKeys.next()) {
+                        System.out.println("Treino criado com sucesso! ID do Treino: " + generatedKeys.getInt(1));
+                        System.out.println("Guarde este ID para adicionar exercícios.");
+                    }
+                }
+            } catch (SQLException e) {
+                System.out.println("Erro ao criar treino: " + e.getMessage());
+            }
+            db.close();
+        }
+    }
+    public static void adicionarItemTreino(Scanner scanner) {
+        // 1. Pedir o ID do Treino
+        System.out.println("\n--- ADICIONAR EXERCÍCIO AO TREINO ---");
+        System.out.print("Digite o ID do Treino: ");
+        int idTreino = scanner.nextInt();
+
+        // 2. Mostrar exercícios disponíveis para facilitar
+        listarExercicios();
+
+        System.out.print("Digite o ID do Exercício a adicionar: ");
+        int idExercicio = scanner.nextInt();
+
+        System.out.print("Número de Séries (ex: 3): ");
+        int series = scanner.nextInt();
+
+        System.out.print("Número de Repetições (ex: 12): ");
+        int repeticoes = scanner.nextInt();
+
+        System.out.print("Carga em KG (ex: 20,5): ");
+        double carga = scanner.nextDouble(); // Usa vírgula ou ponto dependendo do sistema
+
+        db = new DBConnection(dbName);
+        if (db.connect()) {
+            String sql = "INSERT INTO itens_treino (id_treino, id_exercicio, series, repeticoes, carga_kg) VALUES (?, ?, ?, ?, ?)";
+            try (PreparedStatement ps = db.getConnection().prepareStatement(sql)) {
+                ps.setInt(1, idTreino);
+                ps.setInt(2, idExercicio);
+                ps.setInt(3, series);
+                ps.setInt(4, repeticoes);
+                ps.setDouble(5, carga);
+
+                int rows = ps.executeUpdate();
+                if (rows > 0) {
+                    System.out.println("Exercício adicionado ao treino com sucesso!");
+                }
+            } catch (SQLException e) {
+                System.out.println("Erro ao adicionar item: " + e.getMessage());
+            }
             db.close();
         }
     }
